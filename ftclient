@@ -1,0 +1,186 @@
+#!/usr/bin/python
+
+#/***********************************************
+# File name: chatserve.py
+# Description: This program functions as a server for a chat program
+# Author: Shawn Berg
+# Date: 2/7/19
+# External References: "Computer Networking A Top Down Approach" by Kurose and Ross
+# page: 169
+#************************************************/
+
+import time
+import sys
+import os
+from socket import *
+
+
+#***********************************************
+# Function name: startup
+# Description: This function starts up a socket for listening
+# Parameters: port (portnumber used for the socket)
+# Returns: serverSocket (socket to be used later)
+# Preconditions: Port number has been specified
+# Postconditions: socket is created and is listening
+#***********************************************
+#def startup(port):
+#    # Check args and help user run file
+#    if len(sys.argv) < 6:
+#        print("Run ftclient using \"./ftclient <SERVER-HOSTNAME> <PORT#> <COMMAND> <FILENAME> <DATA_PORT>\"")
+#        exit()
+#
+#    # store socket address
+#    hostname = int(sys.argv[1]
+#    port = int(sys.argv[2])
+#
+#    # setup socket
+#    serverSocket = socket(AF_INET, SOCK_STREAM)
+#    serverSocket.bind((hostname, port))
+#
+#    return serverSocket
+
+#***********************************************
+# Function name: recvMessage
+# Description: This function receives messages and prints them to stdout
+# Parameters: a connected connectionSocket and the status of the socket as a boolean
+# Returns: The status of the socket as a boolean
+# Preconditions: A socket has been created and connected to by another process
+# Postconditions: Any message received is printed to stdout
+#***********************************************
+def recvMessage(connectionSocket, connected):
+    # receive message
+    message = connectionSocket.recv(500).decode()
+
+    # if other host quits
+    if "/quit" in message or len(message) == 0:
+        connected = False
+    print(message)
+    return connected
+
+#***********************************************
+# Function name: recvConnection
+# Description: This function waits for a connection from another process
+# Parameters: serverSocket(a socket that is created and listening)
+# Returns: A connected socket
+# Preconditions: A socket has been created and is listening
+# Postconditions: The socket is connected by another process
+#***********************************************
+def recvConnection(serverSocket):
+    print("The server is waiting for a connection")
+    connectionSocket, addr = serverSocket.accept()
+    clientPort = connectionSocket.recv(10).decode()
+    print("Client connected on port: " + clientPort)
+    return connectionSocket
+
+#***********************************************
+# Function name: sendMessage
+# Description: This funciton sends a message via socket
+# Parameters: A connected socket, the handle, and the status of the socket
+# Returns: The status of the socket
+# Preconditions: A socket has been created and is connected to by another socket
+# Postconditions: Message has been sent via the socket
+#***********************************************
+def sendMessage(handle, connectionSocket, connected):
+    # send response
+    msg = raw_input(handle + "> ")[:500]
+    msg = handle + '> ' + msg
+    if "/quit" in msg:
+        connected = False
+    connectionSocket.send(msg)
+    return connected
+
+#***********************************************
+# Function name: main
+# Description: The main function of the program
+# Parameters: None
+# Returns: None
+# Preconditions: The program has been called from command line
+# Postconditions: The program is terminated
+#***********************************************
+def main():
+
+    # get command line arguments
+    if len(sys.argv) < 5:
+        print("Run ftclient using \"./ftclient <SERVER-HOSTNAME> <PORT#> <COMMAND> [FILENAME] <DATA_PORT>\"")
+        exit()
+    serverHost = sys.argv[1]
+    controlPort = sys.argv[2]
+    command = sys.argv[3]
+    if command == '-g':
+        if len(sys.argv) < 6:
+            print("Run ftclient using \"./ftclient <SERVER-HOSTNAME> <PORT#> <COMMAND> [FILENAME] <DATA_PORT>\"")
+            exit()
+        fileName = sys.argv[4]
+        dataPort = sys.argv[5]
+    else:
+        dataPort = sys.argv[4]
+
+    #print(serverHost + ' ' + controlPort + ' ' + command + ' ' + dataPort)
+
+
+    #establish control connection
+    controlSocket = socket(AF_INET, SOCK_STREAM)
+    controlSocket.connect((serverHost, int(controlPort)))
+
+    msg = ""
+
+    # send command over control connection
+    for arg in sys.argv:
+        msg += arg + ' '
+    # add hostname to message
+    msg += gethostname()
+    controlSocket.send(msg.encode())
+    print("Command Sent " + msg)
+
+    # receive confirmation from control connection
+    msg = controlSocket.recv(500).decode()
+    #print(msg)
+
+    # check for error and quit if necessary
+    if 'ERROR' in msg:
+        print(serverHost + ":" + controlPort + " says " + msg)
+        sys.exit(1)
+
+    #listen for connection for data connection
+    dataSocket = socket(AF_INET, SOCK_STREAM)
+    dataSocket.bind((gethostname(), int(dataPort)))
+    dataSocket.listen(10)
+    connectionSocket, addr = dataSocket.accept()
+    print("Data connection established with server")
+    #TODO handle large messages
+    #while True:
+    #trash = connectionSocket.recv(1024)
+    msg = connectionSocket.recv(10000)
+        #data = connectionSocket.recv(1024)
+        #msg+=data
+        #if data == "":
+        #    break
+
+
+    if command == '-l':
+        # print message contents
+        print("Receiving directory structure from " + serverHost + ":" + controlPort)
+        print(msg)
+    elif command == '-g':
+        print("Receiving " + fileName + " from " + serverHost + ":" + controlPort)
+        fileNum = 1
+        # if file exists
+        while os.path.isfile('./'+fileName):
+            print(fileName + " already exists. Creating new file.")
+            # append number to file name
+            fileName = fileName[:-4] + str(fileNum) + ".txt"
+            fileNum+=1
+
+        print("Saving as " + fileName)
+        with open(fileName, 'w+') as file:
+            # save contents from data connection to file
+            file.write(msg)
+        print("File transfer complete.")
+
+    connectionSocket.close()
+    dataSocket.close()
+    controlSocket.close()
+
+
+
+main()
